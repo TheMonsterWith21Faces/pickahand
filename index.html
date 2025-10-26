@@ -29,7 +29,7 @@
     .card{background:#0f141b;border:1px solid #293241; border-radius:10px; padding:10px}
     .status{margin-top:10px; min-height:24px; color:var(--accent)}
     .hint{opacity:.7; font-size:.9rem}
-  .armed{cursor:pointer}
+    .armed{cursor:pointer}
   </style>
 </head>
 <body>
@@ -65,7 +65,8 @@
 
   <script>
   (function(){
-    const ASSETS = '/assets/'; // use absolute path per your setup
+    // IMPORTANT for GitHub Pages: use a RELATIVE path (no leading slash)
+    const ASSETS = 'assets/';
     const SRC = {
       base: ASSETS + 'base.png',
       map:  ASSETS + 'clickareas.png',
@@ -102,7 +103,7 @@
 
     const chooseRandomColor = () => ['red','yellow','blue','green'][Math.floor(Math.random()*4)];
 
-    function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+    function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=()=>rej(new Error('failed '+src)); i.src=src; }); }
 
     function canvasPointFromEvent(evt){
       const rect = stage.getBoundingClientRect();
@@ -146,10 +147,12 @@
       if(!armed){ status.textContent='Enter bet and press Go.'; return; }
       let picked;
       try { picked = colorAt(canvasPointFromEvent(evt)); }
-      catch (e) { console.error(e); status.textContent = 'Click-map blocked by the browser. Please run from http://localhost instead of file://'; return; }
+      catch (e) { console.error(e); status.textContent = 'Canvas click-map blocked.'; return; }
       if(!picked){ status.textContent='Click on one of the four hand zones.'; return; }
+
       ovImg.src = overlaysByColor[picked];
       ovImg.style.display = 'block';
+
       const bet = Math.max(1, Math.floor(Number(betEl.value)));
       totalWagers += bet;
       if(picked === winningColor){
@@ -174,17 +177,16 @@ Update your character sheet accordingly.`);
       .then(([bImg, mImg])=>{
         stage.style.width  = bImg.naturalWidth + 'px';
         stage.style.height = bImg.naturalHeight + 'px';
-        baseImg.src = SRC.base;
+        baseImg.src = SRC.base;               // show base underlay
         baseImg.style.display = 'block';
-        stage.style.backgroundImage = `url(${SRC.base})`;
-        ovImg.src = '';
+        ovImg.src = '';                       // ensure overlay hidden
         ovImg.style.display = 'none';
         mapC.width = bImg.naturalWidth; mapC.height = bImg.naturalHeight;
         mctx.clearRect(0,0,mapC.width,mapC.height);
         mctx.drawImage(mImg,0,0,mapC.width,mapC.height);
         status.textContent = 'Loaded. Click Start Game to begin.';
         updateStats();
-      }
+      })
       .catch(err=>{ console.error(err); status.textContent = 'Failed to load assets. Ensure ./assets/ exists next to this HTML.'; });
 
     stage.addEventListener('click', onPick);
