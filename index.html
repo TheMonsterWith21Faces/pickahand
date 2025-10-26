@@ -49,7 +49,24 @@
           <button data-pick="lr" aria-label="lower-right"></button>
         </div>
       </div>
+      <div class="panel">
+        <div class="row">
+          <input id="bet" type="number" min="1" step="1" placeholder="Enter bet (gold)" />
+          <button id="go" class="primary">Go</button>
+        </div>
+        <div class="row">
+          <button id="start">Start Game</button>
+          <button id="cash">Cash Out</button>
+        </div>
+        <div class="stats">
+          <div class="card"><strong>Total Wagers</strong><br><span id="wagers">0</span> gold</div>
+          <div class="card"><strong>Total Winnings</strong><br><span id="winnings">0</span> gold</div>
+        </div>
+        <div class="status" id="status">Click <em>Start Game</em> to begin.</div>
+        <div class="hint">Enter a bet, press <b>Go</b>, then click one of the dealer's four hands.</div>
       </div>
+    </div>
+  </div>
       <div class="panel">
         <div class="row">
           <input id="bet" type="number" min="1" step="1" placeholder="Enter bet (gold)" />
@@ -96,7 +113,8 @@
     const sWin    = document.getElementById('sWin');
     const sLose   = document.getElementById('sLose');
 
-    const overlayByPick = { ul:SRC.ul, ur:SRC.ur, ll:SRC.ll, lr:SRC.lr };
+    
+    const labelByPick = { ul:'Upper Left', ur:'Upper Right', ll:'Lower Left', lr:'Lower Right' };
 
     let totalWagers = 0, totalWinnings = 0;
     let armed = false, roundActive = false, winningPick = null;
@@ -110,10 +128,7 @@
     const chooseRandomPick = () => ['ul','ur','ll','lr'][Math.floor(Math.random()*4)];
 
     function startRound(){
-      ovImg.style.display='none'; ovImg.src='';
-      armed=false; setArmedCursor(false); roundActive=true;
-      winningPick = chooseRandomPick();
-      status.textContent = 'New round. Place your bet and press Go.';
+      // fresh round: hide overlay and (re)armew round. Place your bet and press Go.';
     }
 
     function armBet(){
@@ -132,6 +147,21 @@
       const btn = e.target.closest('button[data-pick]');
       if(!btn) return;
       if(!roundActive){ status.textContent='Press Start Game.'; return; }
+      if(!armed){ status.te winning one)
+      ovImg.src = overlayByPick[picked];
+      ovImg.style.display = 'block';
+
+      const bet = Math.max(1, Math.floor(Number(betEl.value)));
+      totalWagers += bet;
+      if(picked === winningPick){
+        const payout = bet*4; totalWinnings += payout; try{ sWin.currentTime=0; sWin.play(); }catch(e){}
+        status.textContent = `Picked: ${labelByPick[picked]} — WIN (Winning: ${labelByPick[winningPick]})  +${payout} gold`;
+      } else {
+        try{ sLose.currentTime=0; sLose.play(); }catch(e){}
+        status.textContent = `Picked: ${labelByPick[picked]} — LOSE (Winning: ${labelByPick[winningPick]})  -${bet} gold`;
+      }
+      armed=false; setArmedCursor(false); updateStats();
+    }
       if(!armed){ status.textContent='Enter bet and press Go.'; return; }
       const picked = btn.getAttribute('data-pick');
 
