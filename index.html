@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Four Hands Croupier</title>
+  <style>
+    :root { --bg:#0b0f13; --panel:#141a22; --accent:#ffd166; --text:#e8ecf1; }
+    html,body{height:100%; margin:0; background:var(--bg); color:var(--text); font:16px/1.4 system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    .wrap{max-width:1100px; margin:24px auto; padding:16px;}
+    .game{display:grid; grid-template-columns: 1fr 320px; gap:16px; align-items:start}
+
+    /* Stage shows base.png as a CSS background so it is ALWAYS visible */
+    .stage{position:relative; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35);
+      width: 1152px; height: 768px; /* fallback */
+      background: #000 center/contain no-repeat;
+      image-rendering: crisp-edges; image-rendering: pixelated;
+    }
+    .stage img{position:absolute; left:0; top:0; width:100%; height:100%; display:block; user-select:none; -webkit-user-drag:none}
+    #overlayImg{display:none}
+    #map{display:none}
+
+    .panel{background:var(--panel); border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.35); position:sticky; top:16px}
+    .row{display:flex; gap:8px; align-items:center; margin:10px 0}
+    input[type=number]{flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a3441; background:#0f141b; color:var(--text)}
+    button{padding:10px 14px; border-radius:10px; border:1px solid #2a3441; background:#19212c; color:var(--text); cursor:pointer}
+    button.primary{background:#243142; border-color:#2e3c4f}
+    .stats{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:6px}
+    .card{background:#0f141b;border:1px solid #293241; border-radius:10px; padding:10px}
+    .status{margin-top:10px; min-height:24px; color:var(--accent)}
+    .hint{opacity:.7; font-size:.9rem}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Four Hands Croupier</h1>
+    <div class="game">
+      <div class="stage" id="stage">
+        <!-- Base is drawn as CSS background; this img is not needed for base -->
+        <img id="overlayImg" alt="overlay">
+        <canvas id="map"></canvas>
+      </div>
+      <div class="panel">
+        <div class="row">
+          <input id="bet" type="number" min="1" step="1" placeholder="Enter bet (gold)" />
+          <button id="go" class="primary">Go</button>
+        </div>
+        <div class="row">
+          <button id="start">Start Game</button>
+          <button id="cash">Cash Out</button>
+        </div>
+        <div class="stats">
+          <div class="card"><strong>Total Wagers</strong><br><span id="wagers">0</span> gold</div>
+          <div class="card"><strong>Total Winnings</strong><br><span id="winnings">0</span> gold</div>
+        </div>
+        <div class="status" id="status">Click <em>Start Game</em> to begin.</div>
+        <div class="hint">Enter a bet, press <b>Go</b>, then click one of the dealer's four hands.</div>
+      </div>
+    </div>
+  </div>
+
+  <audio id="sWin" src="assets/win.wav" preload="auto"></audio>
+  <audio id="sLose" src="assets/lose.wav" preload="auto"></audio>
+
+  <script>
+  (function(){
+    const ASSETS = 'assets/';
+    const SRC = {
+      base: ASSETS + 'base.png',
+      map:  ASSETS + 'clickareas.png',
+      ul:   ASSETS + 'ul.png',
+      ll:   ASSETS + 'll.png',
+      ur:   ASSETS + 'ur.png',
+      lr:   ASSETS + 'lr.png'
+    };
+
+    const stage   = document.getElementById('stage');
+    const ovImg   = document.getElementById('overlayImg');
+    const mapC    = document.getElementById('map');
+    const mctx    = mapC.getContext('2d');
+
+    const betEl   = document.getElementById('bet');
+    const goBtn   = document.getElementById('go');
+    const startBtn= document.getElementById('start');
+    const cashBtn = document.getElementById('cash');
+    const status  = document.getElementById('status');
+    const sWin    = document.getElementById('sWin');
+    const sLose   = document.getElementById('sLose');
+
+    const overlaysByColor = { red:SRC.ul, yellow:SRC.ll, blue:SRC.ur, green:SRC.lr };
+
+    let totalWagers = 0, totalWinnings = 0;
+    let armed = false, roundActive = false, winningColor = null;
+
+    const fmt = n => new Intl.NumberFormat().format(n|0);
+    const updateStats = () => {
+      document.getElementById('wagers').textContent = fmt(totalWagers);
+      document.getElementById('winnings').textContent = fmt(totalWinnings);
+    };
+
+    const chooseRandomColor = () => ['red','yellow','blue','green'][Math.floor(Math.random()*4)];
+
+    function load(src){ return new Promise((res,rej)=>{ const i=new Image(); i.onload=()=>res(i); i.onerror=rej; i.src=src; }); }
+
+    function canvasPointFromEvent(evt){
+      const rect = stage.getBoundingClientRect();
+      const scaleX = mapC.width / rect.width;
+      const scaleY = mapC.height/ rect.height;
+      return { x: Math.floor((evt.clientX-rect.left)*scaleX), y: Math.floor((evt.clientY-rect.top)*scaleY) };
+    }
+
+    function colorAt(pt){
+      const d = mctx.getImageData(pt.x, pt.y, 1, 1).data;
+      const [r,g,b,a] = d; if(a===0) return null;
+      const near=(v,t)=>Math.abs(v-t)<=20;
+      if(near(r,255)&&near(g,0)&&near(b,0)) return 'red';
+      if(near(r,255)&&near(g,255)&&near(b,0)) return 'yellow';
+      if(near(r,0)&&near(g,120)&&near(b,255)) return 'blue';
+      if(near(r,0)&&near(g,200)&&near(b,0)) return 'green';
+      if(r>200&&g<80&&b<80) return 'red';
+      if(r>200&&g>200&&b<80) return 'yellow';
+      if(b>150&&r<100&&g<180) return 'blue';
+      if(g>150&&r<100&&b<120) return 'green';
+      return null;
+    }
+
+    function startRound(){
+      ovImg.style.display='none'; ovImg.src='';
+      armed=false; roundActive=true;
+      winningColor = chooseRandomColor();
+      status.textContent = 'New round. Place your bet and press Go.';
+    }
+
+    function armBet(){
+      const amt = Math.max(1, Math.floor(Number(betEl.value)));
+      if(!roundActive){ status.textContent = 'Press Start Game first.'; return; }
+      if(!amt){ status.textContent = 'Enter a valid bet.'; return; }
+      betEl.value = amt; armed = true; status.textContent = 'Bet armed. Choose a hand.';
+    }
+
+    function onPick(evt){
+      if(!roundActive){ status.textContent='Press Start Game.'; return; }
+      if(!armed){ status.textContent='Enter bet and press Go.'; return; }
+      const picked = colorAt(canvasPointFromEvent(evt));
+      if(!picked){ status.textContent='Click on one of the four hand zones.'; return; }
+
+      ovImg.src = overlaysByColor[picked];
+      ovImg.style.display = 'block';
+
+      const bet = Math.max(1, Math.floor(Number(betEl.value)));
+      totalWagers += bet;
+      if(picked === winningColor){
+        const payout = bet*4; totalWinnings += payout; try{ sWin.currentTime=0; sWin.play(); }catch(e){}
+        status.textContent = `You picked ${picked.toUpperCase()} and WIN! (+${payout} gold)`;
+      } else {
+        try{ sLose.currentTime=0; sLose.play(); }catch(e){}
+        status.textContent = `You picked ${picked.toUpperCase()} and lose. (-${bet} gold)`;
+      }
+      armed=false; updateStats();
+    }
+
+    function cashOut(){
+      const net = totalWinnings - totalWagers;
+      alert(`You cash out with ${fmt(net)} gold (winnings: ${fmt(totalWinnings)} − wagers: ${fmt(totalWagers)}).
+
+Update your character sheet accordingly.`);
+    }
+
+    // Boot: load base & map, then size the stage to native pixels
+    Promise.all([load(SRC.base), load(SRC.map)])
+      .then(([bImg, mImg])=>{
+        // show base ALWAYS via CSS background
+        stage.style.backgroundImage = `url(${SRC.base})`;
+        stage.style.width  = bImg.naturalWidth + 'px';
+        stage.style.height = bImg.naturalHeight + 'px';
+
+        // hit map
+        mapC.width = bImg.naturalWidth; mapC.height = bImg.naturalHeight;
+        mctx.clearRect(0,0,mapC.width,mapC.height);
+        mctx.drawImage(mImg,0,0,mapC.width,mapC.height);
+
+        status.textContent = 'Loaded. Click Start Game to begin.';
+        updateStats();
+      })
+      .catch(err=>{ console.error(err); status.textContent = 'Failed to load assets. Ensure ./assets/ exists next to this HTML.'; });
+
+    stage.addEventListener('click', onPick);
+    goBtn.addEventListener('click', armBet);
+    startBtn.addEventListener('click', startRound);
+    cashBtn.addEventListener('click', cashOut);
+  })();
+  </script>
+</body>
+</html>
