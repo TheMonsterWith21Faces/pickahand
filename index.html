@@ -10,14 +10,14 @@
     .wrap{max-width:1100px; margin:24px auto; padding:16px;}
     .game{display:grid; grid-template-columns: 1fr 320px; gap:16px; align-items:start}
 
-    /* Stage shows base.png as a CSS background so it is ALWAYS visible */
+    /* Stage shows base.png via an <img> so it is ALWAYS visible */
     .stage{position:relative; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35);
-      width: 1152px; height: 768px; /* fallback */
-      background: #000 center/contain no-repeat;
-      image-rendering: crisp-edges; image-rendering: pixelated;
+      background:#000; /* no background image; we use <img> for base */
+      width: 1152px; height: 768px; /* fallback until images load */
     }
     .stage img{position:absolute; left:0; top:0; width:100%; height:100%; display:block; user-select:none; -webkit-user-drag:none}
-    #overlayImg{display:none}
+    #overlayImg{display:none; z-index:2; pointer-events:none}
+    #baseImg{z-index:1}
     #map{display:none}
 
     .panel{background:var(--panel); border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.35); position:sticky; top:16px}
@@ -29,6 +29,7 @@
     .card{background:#0f141b;border:1px solid #293241; border-radius:10px; padding:10px}
     .status{margin-top:10px; min-height:24px; color:var(--accent)}
     .hint{opacity:.7; font-size:.9rem}
+  .armed{cursor:pointer}
   </style>
 </head>
 <body>
@@ -36,7 +37,7 @@
     <h1>Four Hands Croupier</h1>
     <div class="game">
       <div class="stage" id="stage">
-        <!-- Base is drawn as CSS background; this img is not needed for base -->
+        <img id="baseImg" alt="croupier">
         <img id="overlayImg" alt="overlay">
         <canvas id="map"></canvas>
       </div>
@@ -64,7 +65,7 @@
 
   <script>
   (function(){
-    const ASSETS = 'assets/';
+    const ASSETS = '/assets/'; // use absolute path per your setup
     const SRC = {
       base: ASSETS + 'base.png',
       map:  ASSETS + 'clickareas.png',
@@ -75,6 +76,7 @@
     };
 
     const stage   = document.getElementById('stage');
+    const baseImg = document.getElementById('baseImg');
     const ovImg   = document.getElementById('overlayImg');
     const mapC    = document.getElementById('map');
     const mctx    = mapC.getContext('2d');
@@ -136,17 +138,18 @@
       if(!roundActive){ status.textContent = 'Press Start Game first.'; return; }
       if(!amt){ status.textContent = 'Enter a valid bet.'; return; }
       betEl.value = amt; armed = true; status.textContent = 'Bet armed. Choose a hand.';
+      stage.classList.add('armed');
     }
 
     function onPick(evt){
       if(!roundActive){ status.textContent='Press Start Game.'; return; }
       if(!armed){ status.textContent='Enter bet and press Go.'; return; }
-      const picked = colorAt(canvasPointFromEvent(evt));
+      let picked;
+      try { picked = colorAt(canvasPointFromEvent(evt)); }
+      catch (e) { console.error(e); status.textContent = 'Click-map blocked by the browser. Please run from http://localhost instead of file://'; return; }
       if(!picked){ status.textContent='Click on one of the four hand zones.'; return; }
-
       ovImg.src = overlaysByColor[picked];
       ovImg.style.display = 'block';
-
       const bet = Math.max(1, Math.floor(Number(betEl.value)));
       totalWagers += bet;
       if(picked === winningColor){
@@ -156,7 +159,7 @@
         try{ sLose.currentTime=0; sLose.play(); }catch(e){}
         status.textContent = `You picked ${picked.toUpperCase()} and lose. (-${bet} gold)`;
       }
-      armed=false; updateStats();
+      armed=false; stage.classList.remove('armed'); updateStats();
     }
 
     function cashOut(){
@@ -166,22 +169,22 @@
 Update your character sheet accordingly.`);
     }
 
-    // Boot: load base & map, then size the stage to native pixels
+    // Boot: load base & map, then size the stage to native pixels and SHOW base
     Promise.all([load(SRC.base), load(SRC.map)])
       .then(([bImg, mImg])=>{
-        // show base ALWAYS via CSS background
-        stage.style.backgroundImage = `url(${SRC.base})`;
         stage.style.width  = bImg.naturalWidth + 'px';
         stage.style.height = bImg.naturalHeight + 'px';
-
-        // hit map
+        baseImg.src = SRC.base;
+        baseImg.style.display = 'block';
+        stage.style.backgroundImage = `url(${SRC.base})`;
+        ovImg.src = '';
+        ovImg.style.display = 'none';
         mapC.width = bImg.naturalWidth; mapC.height = bImg.naturalHeight;
         mctx.clearRect(0,0,mapC.width,mapC.height);
         mctx.drawImage(mImg,0,0,mapC.width,mapC.height);
-
         status.textContent = 'Loaded. Click Start Game to begin.';
         updateStats();
-      })
+      }
       .catch(err=>{ console.error(err); status.textContent = 'Failed to load assets. Ensure ./assets/ exists next to this HTML.'; });
 
     stage.addEventListener('click', onPick);
