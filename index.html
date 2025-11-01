@@ -15,10 +15,21 @@
     #baseImg{display:block; width:100%; height:auto; z-index:1}
     #overlayImg{position:absolute; inset:0; width:100%; height:100%; display:none; z-index:2; pointer-events:none}
 
-    .zones{position:absolute; inset:0; z-index:3; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr}
-    .zones button{background:transparent; border:0; padding:0; margin:0; width:100%; height:100%; cursor:default}
+    /* === Click Areas === */
+    .zones{position:absolute; inset:0; z-index:3}
+    .zones button{position:absolute; background:transparent; border:0; padding:0; margin:0; cursor:default}
     .zones button.armed{cursor:pointer}
 
+    /* Upper Left (red) */
+    .zones [data-pick="ul"]{ left:6%;  top:28%; width:26%; height:22%; }
+    /* Lower Left (yellow) */
+    .zones [data-pick="ll"]{ left:9%;  top:62%; width:28%; height:24%; }
+    /* Upper Right (blue) */
+    .zones [data-pick="ur"]{ right:6%; top:28%; width:26%; height:22%; }
+    /* Lower Right (green) */
+    .zones [data-pick="lr"]{ right:9%; top:62%; width:28%; height:24%; }
+
+    /* Panel */
     .panel{background:var(--panel); border-radius:12px; padding:16px; box-shadow:0 10px 30px rgba(0,0,0,.35); position:sticky; top:16px}
     .row{display:flex; gap:8px; align-items:center; margin:10px 0}
     input[type=number]{flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a3441; background:#0f141b; color:var(--text)}
@@ -28,6 +39,9 @@
     .card{background:#0f141b;border:1px solid #293241; border-radius:10px; padding:10px}
     .status{margin-top:10px; min-height:24px; color:var(--accent)}
     .hint{opacity:.7; font-size:.9rem}
+
+    /* DEBUG VISUALIZATION - remove when done */
+    /* .zones button{ outline:2px dashed rgba(255,255,255,.25); } */
   </style>
 </head>
 <body>
@@ -80,7 +94,6 @@
 
     const ovImg   = document.getElementById('overlayImg');
     const zones   = document.getElementById('zones');
-
     const betEl   = document.getElementById('bet');
     const goBtn   = document.getElementById('go');
     const startBtn= document.getElementById('start');
@@ -108,14 +121,11 @@
     const chooseRandomPick = () => picks[Math.floor(Math.random()*picks.length)];
 
     function startRound(){
-      // reset visuals/state
       ovImg.style.display = 'none';
       ovImg.removeAttribute('src');
       armed = false;
       pickedThisRound = false;
       setArmedCursor(false);
-
-      // new round armed OFF until bet is locked
       winningPick = chooseRandomPick();
       roundActive = true;
       status.textContent = 'Round started. Enter bet and press Go.';
@@ -136,12 +146,12 @@
       if(!btn) return;
       if(!roundActive){ status.textContent='Press Start Game.'; return; }
       if(!armed){ status.textContent='Enter bet and press Go.'; return; }
-      if(pickedThisRound){ return; } // ignore extra clicks until next round
+      if(pickedThisRound){ return; }
       pickedThisRound = true;
 
       const picked = btn.getAttribute('data-pick');
 
-      // Always reveal the CHIP hand (winningPick)
+      // Reveal chip hand (the winning one)
       ovImg.src = SRC[winningPick];
       ovImg.style.display = 'block';
 
@@ -159,7 +169,7 @@
       }
 
       armed = false; setArmedCursor(false); updateStats();
-      roundActive = false; // force Start Game for next round
+      roundActive = false;
     }
 
     function cashOut(){
