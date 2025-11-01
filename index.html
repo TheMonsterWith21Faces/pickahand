@@ -10,16 +10,12 @@
     .wrap{max-width:1100px; margin:24px auto; padding:16px;}
     .game{display:grid; grid-template-columns: 1fr 320px; gap:16px; align-items:start}
 
-    /* Fixed-size stage at native pixels; base.png is ALWAYS visible */
-    .stage{position:relative; display:inline-block; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35); background:#000;} 
+    .stage{position:relative; border-radius:12px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,.35); background:#000;} 
     .stage img{user-select:none; -webkit-user-drag:none}
-    #baseImg{display:block; width:100%; height:auto;}
-    #overlayImg{position:absolute; left:0; top:0; width:100%; height:100%; pointer-events:none; z-index:2} 
-    #overlayImg{display:none; z-index:2; pointer-events:none}
-    #baseImg{z-index:1}
+    #baseImg{display:block; width:100%; height:auto; z-index:1}
+    #overlayImg{position:absolute; inset:0; width:100%; height:100%; display:none; z-index:2; pointer-events:none}
 
-    /* 4 invisible hit zones in a 2x2 grid */
-    .zones{position:absolute; inset:0; z-index:3; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr} 
+    .zones{position:absolute; inset:0; z-index:3; display:grid; grid-template-columns:1fr 1fr; grid-template-rows:1fr 1fr}
     .zones button{background:transparent; border:0; padding:0; margin:0; width:100%; height:100%; cursor:default}
     .zones button.armed{cursor:pointer}
 
@@ -39,9 +35,8 @@
     <h1>Four Hands Croupier</h1>
     <div class="game">
       <div class="stage" id="stage">
-        <!-- HARD-SET base so it ALWAYS shows, no JS needed -->
         <img id="baseImg" alt="croupier" src="assets/base.png">
-        <img id="overlayImg" alt="overlay" style="display:none">
+        <img id="overlayImg" alt="overlay">
         <div class="zones" id="zones" aria-label="pick a hand">
           <button data-pick="ul" aria-label="upper-left"></button>
           <button data-pick="ur" aria-label="upper-right"></button>
@@ -49,6 +44,7 @@
           <button data-pick="lr" aria-label="lower-right"></button>
         </div>
       </div>
+
       <div class="panel">
         <div class="row">
           <input id="bet" type="number" min="1" step="1" placeholder="Enter bet (gold)" />
@@ -63,25 +59,7 @@
           <div class="card"><strong>Total Winnings</strong><br><span id="winnings">0</span> gold</div>
         </div>
         <div class="status" id="status">Click <em>Start Game</em> to begin.</div>
-        <div class="hint">Enter a bet, press <b>Go</b>, then click one of the dealer's four hands.</div>
-      </div>
-    </div>
-  </div>
-      <div class="panel">
-        <div class="row">
-          <input id="bet" type="number" min="1" step="1" placeholder="Enter bet (gold)" />
-          <button id="go" class="primary">Go</button>
-        </div>
-        <div class="row">
-          <button id="start">Start Game</button>
-          <button id="cash">Cash Out</button>
-        </div>
-        <div class="stats">
-          <div class="card"><strong>Total Wagers</strong><br><span id="wagers">0</span> gold</div>
-          <div class="card"><strong>Total Winnings</strong><br><span id="winnings">0</span> gold</div>
-        </div>
-        <div class="status" id="status">Click <em>Start Game</em> to begin.</div>
-        <div class="hint">Enter a bet, press <b>Go</b>, then click one of the dealer's four hands.</div>
+        <div class="hint">Flow: Start → enter bet + Go → click a hand. The chip hand is revealed. Guess right = 4×.</div>
       </div>
     </div>
   </div>
@@ -91,17 +69,15 @@
 
   <script>
   (function(){
-    // GitHub Pages: use RELATIVE paths (no leading slash)
     const ASSETS = 'assets/';
     const SRC = {
       base: ASSETS + 'base.png',
       ul:   ASSETS + 'ul.png',
-      ll:   ASSETS + 'll.png',
       ur:   ASSETS + 'ur.png',
+      ll:   ASSETS + 'll.png',
       lr:   ASSETS + 'lr.png'
     };
 
-    const baseImg = document.getElementById('baseImg');
     const ovImg   = document.getElementById('overlayImg');
     const zones   = document.getElementById('zones');
 
@@ -113,11 +89,11 @@
     const sWin    = document.getElementById('sWin');
     const sLose   = document.getElementById('sLose');
 
-    
     const labelByPick = { ul:'Upper Left', ur:'Upper Right', ll:'Lower Left', lr:'Lower Right' };
+    const picks = ['ul','ur','ll','lr'];
 
     let totalWagers = 0, totalWinnings = 0;
-    let armed = false, roundActive = false, winningPick = null;
+    let armed = false, roundActive = false, winningPick = null, pickedThisRound = false;
 
     const fmt = n => new Intl.NumberFormat().format(n|0);
     const updateStats = () => {
@@ -125,73 +101,72 @@
       document.getElementById('winnings').textContent = fmt(totalWinnings);
     };
 
-    const chooseRandomPick = () => ['ul','ur','ll','lr'][Math.floor(Math.random()*4)];
+    const setArmedCursor = on => {
+      zones.querySelectorAll('button').forEach(b => b.classList.toggle('armed', on));
+    };
+
+    const chooseRandomPick = () => picks[Math.floor(Math.random()*picks.length)];
 
     function startRound(){
-      // fresh round: hide overlay and (re)armew round. Place your bet and press Go.';
+      // reset visuals/state
+      ovImg.style.display = 'none';
+      ovImg.removeAttribute('src');
+      armed = false;
+      pickedThisRound = false;
+      setArmedCursor(false);
+
+      // new round armed OFF until bet is locked
+      winningPick = chooseRandomPick();
+      roundActive = true;
+      status.textContent = 'Round started. Enter bet and press Go.';
     }
 
     function armBet(){
-      const amt = Math.max(1, Math.floor(Number(betEl.value)));
       if(!roundActive){ status.textContent = 'Press Start Game first.'; return; }
-      if(!amt){ status.textContent = 'Enter a valid bet.'; return; }
-      betEl.value = amt; armed = true; setArmedCursor(true);
-      status.textContent = 'Bet armed. Choose a hand.';
-    }
-
-    function setArmedCursor(on){
-      [...zones.querySelectorAll('button')].forEach(b=> b.classList.toggle('armed', on));
+      const amt = Math.max(1, Math.floor(Number(betEl.value)));
+      if(!amt || Number.isNaN(amt)){ status.textContent = 'Enter a valid bet (≥1).'; return; }
+      betEl.value = amt;
+      armed = true;
+      setArmedCursor(true);
+      status.textContent = `Bet ${amt} gold locked. Choose a hand.`;
     }
 
     function onPick(e){
       const btn = e.target.closest('button[data-pick]');
       if(!btn) return;
       if(!roundActive){ status.textContent='Press Start Game.'; return; }
-      if(!armed){ status.te winning one)
-      ovImg.src = overlayByPick[picked];
-      ovImg.style.display = 'block';
-
-      const bet = Math.max(1, Math.floor(Number(betEl.value)));
-      totalWagers += bet;
-      if(picked === winningPick){
-        const payout = bet*4; totalWinnings += payout; try{ sWin.currentTime=0; sWin.play(); }catch(e){}
-        status.textContent = `Picked: ${labelByPick[picked]} — WIN (Winning: ${labelByPick[winningPick]})  +${payout} gold`;
-      } else {
-        try{ sLose.currentTime=0; sLose.play(); }catch(e){}
-        status.textContent = `Picked: ${labelByPick[picked]} — LOSE (Winning: ${labelByPick[winningPick]})  -${bet} gold`;
-      }
-      armed=false; setArmedCursor(false); updateStats();
-    }
       if(!armed){ status.textContent='Enter bet and press Go.'; return; }
+      if(pickedThisRound){ return; } // ignore extra clicks until next round
+      pickedThisRound = true;
+
       const picked = btn.getAttribute('data-pick');
 
-      // Show overlay corresponding to the clicked quadrant
-      ovImg.src = overlayByPick[picked];
+      // Always reveal the CHIP hand (winningPick)
+      ovImg.src = SRC[winningPick];
       ovImg.style.display = 'block';
 
       const bet = Math.max(1, Math.floor(Number(betEl.value)));
       totalWagers += bet;
+
       if(picked === winningPick){
-        const payout = bet*4; totalWinnings += payout; try{ sWin.currentTime=0; sWin.play(); }catch(e){}
-        status.textContent = `You picked ${picked.toUpperCase()} and WIN! (+${payout} gold)`;
+        const payout = bet * 4;
+        totalWinnings += payout;
+        try{ sWin.currentTime=0; sWin.play(); }catch(_){}
+        status.textContent = `You chose ${labelByPick[picked]} — WIN! Chip was ${labelByPick[winningPick]}. +${payout} gold`;
       } else {
-        try{ sLose.currentTime=0; sLose.play(); }catch(e){}
-        status.textContent = `You picked ${picked.toUpperCase()} and lose. (-${bet} gold)`;
+        try{ sLose.currentTime=0; sLose.play(); }catch(_){}
+        status.textContent = `You chose ${labelByPick[picked]} — LOSE. Chip was ${labelByPick[winningPick]}. -${bet} gold`;
       }
-      armed=false; setArmedCursor(false); updateStats();
+
+      armed = false; setArmedCursor(false); updateStats();
+      roundActive = false; // force Start Game for next round
     }
 
     function cashOut(){
       const net = totalWinnings - totalWagers;
-      alert(`You cash out with ${fmt(net)} gold (winnings: ${fmt(totalWinnings)} − wagers: ${fmt(totalWagers)}).
-
-Update your character sheet accordingly.`);
+      alert(`You cash out with ${fmt(net)} gold (winnings: ${fmt(totalWinnings)} − wagers: ${fmt(totalWagers)}).\n\nUpdate your character sheet accordingly.`);
     }
 
-    // Boot: load base image, fix stage size, and SHOW base
-    // No preload needed for base (set in HTML). Keep simple.
-
-    // Events
     zones.addEventListener('click', onPick);
     goBtn.addEventListener('click', armBet);
     startBtn.addEventListener('click', startRound);
